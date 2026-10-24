@@ -73,8 +73,15 @@ function addAlerta(a,topo=true){
  const tr=document.createElement('tr');cel(tr,new Date(a.ts).toLocaleTimeString());cel(tr,a.ip);cel(tr,a.method+' '+a.path);{const td=cel(tr,'');const g=document.createElement('span');g.className='tag';g.style.background=cor(a.category);g.textContent=a.category+(a.rule_hit?'':' ★');td.appendChild(g)}
  cel(tr,a.risk.toFixed(2));cel(tr,a.mitre_id);cel(tr,a.verdict,a.verdict);
  const t=cel(tr,'');const p=document.createElement('div');p.textContent=(a.param?a.param+'=':'')+(a.value_preview||'').slice(0,80);
- const e=document.createElement('div');e.className='mut';e.textContent=a.explanation?(a.explanation_provider?'['+a.explanation_provider+'] ':'')+a.explanation:'gerando explicação…';t.append(p,e);
- linhas[a.alert_id]=e;topo?$('feed').prepend(tr):$('feed').append(tr)}
+ const e=document.createElement('div');e.className='mut';e.textContent=a.explanation?(a.explanation_provider?'['+a.explanation_provider+'] ':'')+a.explanation:'gerando explicação…';
+ const rv=document.createElement('div');rv.style.marginTop='4px';rv.style.fontSize='11px';rv.style.fontWeight='600';t.append(p,rv,e);
+ linhas[a.alert_id]=e;revs[a.alert_id]=rv;if(a.review)pintarRevisao(rv,a.review);
+ topo?$('feed').prepend(tr):$('feed').append(tr)}
+const revs={};
+function pintarRevisao(el,r){
+ const map={ataque:['✓ ataque confirmado pela IA','#ef4444'],falso_positivo:['⚠ possível falso positivo','#e3b341'],incerto:['? incerto','#8b949e']};
+ const [txt,cor]=map[r.veredito]||map.incerto;
+ el.style.color=cor;el.textContent=txt+' ('+Math.round((r.confianca||0)*100)+'%'+(r.provider?' · '+r.provider:'')+')'+(r.motivo?' — '+r.motivo:'')}
 function stats(s){$('c_req').textContent=s.requests;$('c_al').textContent=s.alerts;$('c_bl').textContent=s.blocks;$('c_om').textContent=s.only_model;
  $('modo').textContent='IP: '+s.ip_mode+(s.classifier?'':' · SEM MODELO (só regras)');
  const ks=Object.keys(s.by_type);tipo.data.labels=ks;tipo.data.datasets[0].data=Object.values(s.by_type);tipo.data.datasets[0].backgroundColor=ks.map(cor);tipo.update();
@@ -110,12 +117,13 @@ let es;
 function conectar(){
  carregarProvedor();
  if(es)es.close();if(!chave)return;
- fetch('/api/alerts?limit=50',{headers:hdr()}).then(r=>r.ok?r.json():Promise.reject()).then(l=>{$('feed').replaceChildren();Object.keys(linhas).forEach(k=>delete linhas[k]);l.reverse().forEach(a=>addAlerta(a))}).catch(()=>{});
+ fetch('/api/alerts?limit=50',{headers:hdr()}).then(r=>r.ok?r.json():Promise.reject()).then(l=>{$('feed').replaceChildren();Object.keys(linhas).forEach(k=>delete linhas[k]);Object.keys(revs).forEach(k=>delete revs[k]);l.reverse().forEach(a=>addAlerta(a))}).catch(()=>{});
  es=new EventSource('/events?key='+encodeURIComponent(chave));
  es.onopen=()=>$('conn').textContent='ao vivo';es.onerror=()=>$('conn').textContent='desconectado';
  es.addEventListener('request',e=>{const d=JSON.parse(e.data);contar(d.verdict)});
  es.addEventListener('alert',e=>addAlerta(JSON.parse(e.data)));
  es.addEventListener('alert_update',e=>{const d=JSON.parse(e.data);if(linhas[d.alert_id])linhas[d.alert_id].textContent=(d.provider?'['+d.provider+'] ':'')+d.explanation});
+ es.addEventListener('alert_review',e=>{const d=JSON.parse(e.data);if(revs[d.alert_id])pintarRevisao(revs[d.alert_id],d)});
  es.addEventListener('stats',e=>stats(JSON.parse(e.data)));
  es.addEventListener('reset',()=>{$('feed').replaceChildren()})}
 $('ok').onclick=()=>{chave=$('chave').value;localStorage.setItem('sentinela_key',chave);conectar()};

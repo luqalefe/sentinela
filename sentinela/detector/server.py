@@ -155,6 +155,7 @@ class Estado:
             return {
                 "requests": self.cont["requests"], "alerts": self.cont["alerts"],
                 "blocks": self.cont["blocks"], "only_model": self.cont["only_model"],
+                "false_positives": self.cont["falsos_positivos"],
                 "by_type": dict(self.por_tipo), "top_ips": self.janela.top_ips(),
                 "blocked_ips": self.janela.lista_bloqueados(),
                 "classifier": self.clf is not None,
@@ -268,6 +269,10 @@ class Estado:
                 self.explainer.submit(pedido)
             except Exception as e:  # noqa: BLE001 - explicação nunca derruba a análise
                 print("explainer:", e, file=sys.stderr)
+            # LLM-as-detector: segunda opinião assíncrona (ataque x falso positivo).
+            # Só para alertas de payload, onde falso positivo faz sentido.
+            if origem == "payload":
+                threading.Thread(target=self._revisar, args=(pedido,), daemon=True).start()
         self.emitir("request", {"ts": time.time(), "verdict": veredito})
         resp["latency_ms"] = round((time.perf_counter() - t0) * 1000, 2)
         return resp
@@ -294,6 +299,23 @@ class Estado:
         if provedor:
             linha["provider"] = provedor
         self._gravar(linha, self.updates_path)
+
+    def _revisar(self, pedido):
+        """Thread: pede a segunda opinião da LLM e anota no alerta (nunca muda o veredito)."""
+        try:
+            import reviewer
+            r = reviewer.revisar(self.explainer, pedido)
+        except Exception:  # noqa: BLE001 - sem provedor/erro: alerta fica sem revisão
+            return
+        alert_id = pedido["alert_id"]
+        with self.lock:
+            for a in self.alertas:
+                if a["alert_id"] == alert_id:
+                    a["review"] = r
+                    break
+            if r["veredito"] == "falso_positivo":
+                self.cont["falsos_positivos"] += 1
+        self.emitir("alert_review", {"alert_id": alert_id, **r})
 
 
 def criar_handler(estado):

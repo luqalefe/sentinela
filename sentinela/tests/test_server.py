@@ -239,3 +239,12 @@ def test_oom_payload_pequeno_nao_dispara(tmp_path):
     e = estado(tmp_path)
     e.oom_bytes = 1_000_000
     assert e.analisar(req("tenis azul"))["category"] != "oom"
+
+
+def test_reviewer_interpreta_json():
+    import reviewer
+    r = reviewer.interpretar('texto antes {"veredito":"falso_positivo","confianca":0.8,"motivo":"nome com aspa"} depois')
+    assert r["veredito"] == "falso_positivo"
+    assert r["confianca"] == 0.8
+    r2 = reviewer.interpretar("sem json")
+    assert r2["veredito"] == "incerto" and r2["confianca"] == 0.0
