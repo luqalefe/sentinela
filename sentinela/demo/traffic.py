@@ -47,6 +47,23 @@ PAYLOADS = {
     ],
 }
 
+# Ataques recentes de PHP (2024-2025) — o diferencial de "atualidade" do pitch.
+# São assinaturas de requisição conhecidas, usadas contra o SEU serviço local
+# para validar a detecção; não exploram nada de terceiros.
+PHP_MODERNO = [
+    # CVE-2024-4577 — argument injection no PHP-CGI (Windows, Best-Fit): soft-hyphen
+    # %AD escapa o parser e injeta diretivas -d para habilitar include remoto.
+    ("cmdi", "%ad-d+allow_url_include%3d1+-d+auto_prepend_file%3dphp://input"),
+    ("cmdi", "-d allow_url_include=1 -d auto_prepend_file=php://input"),
+    # CVE-2024-52301 — Laravel: troca o ambiente da aplicação via argv na query.
+    ("cmdi", "--env=production"),
+    ("cmdi", "?--env=local&debug=true"),
+    # PHP filter chain — LFI vira RCE sem arquivo, técnica em alta.
+    ("traversal", "php://filter/convert.base64-decode/resource=index.php"),
+    ("traversal", "php://filter/convert.iconv.utf-8.utf-16|convert.base64-encode/resource=/etc/passwd"),
+    ("traversal", "data://text/plain;base64,PD9waHAgc3lzdGVtKCRfR0VUWzBdKTs/Pg=="),
+]
+
 
 def _req(url, key, path, obj=None):
     data = json.dumps(obj).encode() if obj is not None else None
@@ -83,6 +100,16 @@ def run_payloads(url, key):
                   f"risk={r.get('risk')} rule_hit={r.get('rule_hit')}  <- {v[:40]!r}")
 
 
+def run_php(url, key):
+    print("\n== Ataques recentes de PHP (CVE-2024-4577, CVE-2024-52301, filter chains) ==")
+    ip = "203.0.113.77"
+    for esperado, v in PHP_MODERNO:
+        _, r = analyze(url, key, ip, "/index.php", {"page": v})
+        marca = "OK" if r.get("verdict") == "block" else "!! PASSOU"
+        print(f"[{esperado:9}] {marca:9} verdict={str(r.get('verdict')):5} cat={str(r.get('category')):10} "
+              f"rule_hit={r.get('rule_hit')}  <- {v[:52]!r}")
+
+
 def run_scan(url, key):
     print("\n== Comportamento: scan (muitos 404 em rotas distintas) ==")
     ip = "198.51.100.7"
@@ -116,7 +143,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="http://127.0.0.1:8765")
     ap.add_argument("--reset", action="store_true")
-    ap.add_argument("--only", choices=["payload", "scan", "brute", "flood"])
+    ap.add_argument("--only", choices=["payload", "php", "scan", "brute", "flood"])
     a = ap.parse_args()
     key = os.environ.get("SENTINELA_API_KEY")
     if not key:
@@ -127,6 +154,8 @@ def main():
     only = a.only
     if only in (None, "payload"):
         run_payloads(a.url, key)
+    if only in (None, "php"):
+        run_php(a.url, key)
     if only in (None, "scan"):
         run_scan(a.url, key)
     if only in (None, "brute"):
