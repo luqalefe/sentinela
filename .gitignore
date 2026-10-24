@@ -1,0 +1,8 @@
+.maestri/
+**/.venv/
+**/__pycache__/
+**/.env
+**/.sentinela_key
+**/data/
+**/models/
+**/logs/

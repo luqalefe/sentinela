@@ -1,0 +1,7 @@
+.venv/
+data/
+models/
+logs/
+__pycache__/
+.env
+.sentinela_key

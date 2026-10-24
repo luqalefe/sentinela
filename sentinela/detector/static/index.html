@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Sentinela</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{--bg:#0b1220;--panel:#141d30;--panel2:#1b2640;--line:#26324d;--tx:#e6ebf5;--mut:#8b9ab8;
+--allow:#34d399;--flag:#fbbf24;--block:#f87171}
+*{box-sizing:border-box}
+body{font:14px/1.45 Inter,system-ui,-apple-system,sans-serif;margin:0;background:var(--bg);color:var(--tx)}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:14px 24px;background:var(--panel);border-bottom:1px solid var(--line)}
+h1{font-size:19px;margin:0;flex:1;letter-spacing:.3px}
+button,input{font:inherit;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:inherit;cursor:pointer}
+button:hover{border-color:var(--mut)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;padding:18px 24px 6px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;border-top:3px solid var(--c,var(--line));color:var(--mut)}
+.card b{display:block;font-size:30px;color:var(--tx);margin-top:2px}
+.grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);gap:14px;padding:12px 24px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}header,.cards,.grid{padding-left:14px;padding-right:14px}}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+.box h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--mut)}
+table{width:100%;border-collapse:collapse}td,th{padding:7px 8px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--mut);font-weight:500;font-size:12px}
+.block{color:var(--block);font-weight:600}.flag{color:var(--flag);font-weight:600}.allow{color:var(--allow)}
+.feed{margin:6px 24px 24px;max-height:50vh;overflow:auto}
+@media(max-width:900px){.feed{margin-left:14px;margin-right:14px}}
+.mut{color:var(--mut);font-size:12px}
+.tag{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;color:#0b1220;font-weight:600}
+.bar{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12px}.bar i{display:block;height:8px;border-radius:4px}
+</style></head><body>
+<header><h1>🛡 Sentinela</h1><span id="modo" class="mut"></span><span id="conn" class="mut">desconectado</span>
+<input id="chave" type="password" placeholder="X-Sentinela-Key" size="16"><button id="ok">Conectar</button>
+<button id="reset">Resetar demo</button></header>
+<div class="box" style="margin:12px 16px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+<b>IA do explicador</b><select id="p_preset"></select>
+<input id="p_url" placeholder="base_url" size="30"><input id="p_model" placeholder="modelo" size="18">
+<input id="p_key" type="password" placeholder="api_key" size="18" autocomplete="off">
+<button id="p_salvar">Salvar</button><button id="p_testar">Testar</button><span id="p_msg" class="mut"></span></div>
+<div class="cards">
+<div class="card" style="--c:#60a5fa">Requisições<b id="c_req">0</b></div><div class="card" style="--c:var(--flag)">Alertas<b id="c_al">0</b></div>
+<div class="card" style="--c:var(--block)">Bloqueios<b id="c_bl">0</b></div><div class="card" style="--c:#a78bfa">Só o modelo pegou<b id="c_om">0</b></div></div>
+<div class="grid">
+<div class="box"><canvas id="ch_rps" height="110"></canvas></div>
+<div class="box"><h3>Por tipo</h3><canvas id="ch_tipo" height="200"></canvas><div id="barras"></div></div>
+<div class="box"><h3>Top IPs</h3><table id="ips"></table><h3 style="margin-top:14px">Bloqueados</h3><table id="bloq"></table></div></div>
+<div class="box feed"><table><thead><tr><th>Hora</th><th>IP</th><th>Rota</th><th>Tipo</th><th>Score</th><th>MITRE</th><th>Veredito</th><th>Payload / Explicação</th></tr></thead><tbody id="feed"></tbody></table></div>
+<div class="box" id="chat-logs" style="margin:12px 16px 0">
+<b>Chat de logs</b> <span class="mut">pergunte sobre os alertas (ex.: "qual IP mais atacou?")</span>
+<div style="display:flex;gap:8px;margin:6px 0"><input id="chat-q" placeholder="Pergunte sobre os logs…" style="flex:1"><button id="chat-ask">Perguntar</button></div>
+<div id="chat-out" style="max-height:30vh;overflow:auto"></div></div>
+<script>
+const $=id=>document.getElementById(id);
+let chave=localStorage.getItem('sentinela_key')||'';$('chave').value=chave;
+// Todo texto vindo do servidor entra por textContent: payload nunca vira HTML.
+const cel=(tr,txt,cls)=>{const td=document.createElement('td');td.textContent=txt??'';if(cls)td.className=cls;tr.appendChild(td);return td};
+const hdr=()=>({'X-Sentinela-Key':chave,'Content-Type':'application/json'});
+const COR={sqli:'#f87171',xss:'#fb923c',traversal:'#fbbf24',cmdi:'#e879f9',scan:'#38bdf8',brute_force:'#a78bfa',flood:'#2dd4bf',normal:'#34d399'};
+const cor=c=>COR[c]||'#94a3b8';
+Chart.defaults.color='#8b9ab8';Chart.defaults.borderColor='#26324d';
+const VC={allow:'#34d399',flag:'#fbbf24',block:'#f87171'};
+const rps=new Chart($('ch_rps'),{type:'line',data:{labels:[],datasets:Object.keys(VC).map(v=>({label:v,data:[],borderColor:VC[v],backgroundColor:VC[v]+'33',fill:true,pointRadius:0,tension:.3}))},options:{animation:false,scales:{y:{beginAtZero:true,ticks:{precision:0}},x:{ticks:{maxTicksLimit:6}}},plugins:{title:{display:true,text:'req/s por veredito (últimos 60 s)',color:'#e6ebf5'}}}});
+const tipo=new Chart($('ch_tipo'),{type:'doughnut',data:{labels:[],datasets:[{data:[],backgroundColor:[],borderColor:'#141d30',borderWidth:2}]},options:{animation:false,cutout:'60%',plugins:{legend:{position:'bottom'}}}});
+// Janela deslizante: contagem por segundo (relógio do cliente) acumulada ao chegar cada evento request.
+const buckets=new Map();
+function contar(v){const s=Math.floor(Date.now()/1000);const b=buckets.get(s)||{allow:0,flag:0,block:0};b[v]=(b[v]||0)+1;buckets.set(s,b)}
+function desenhar(){const agora=Math.floor(Date.now()/1000);
+ for(const k of buckets.keys())if(k<agora-60)buckets.delete(k);
+ const L=[],D={allow:[],flag:[],block:[]};
+ for(let t=agora-59;t<=agora;t++){const b=buckets.get(t)||{};L.push(new Date(t*1000).toLocaleTimeString());for(const v in D)D[v].push(b[v]||0)}
+ rps.data.labels=L;rps.data.datasets.forEach(d=>d.data=D[d.label]);rps.update()}
+setInterval(desenhar,1000);desenhar();
+const linhas={};
+function addAlerta(a,topo=true){
+ const tr=document.createElement('tr');cel(tr,new Date(a.ts).toLocaleTimeString());cel(tr,a.ip);cel(tr,a.method+' '+a.path);{const td=cel(tr,'');const g=document.createElement('span');g.className='tag';g.style.background=cor(a.category);g.textContent=a.category+(a.rule_hit?'':' ★');td.appendChild(g)}
+ cel(tr,a.risk.toFixed(2));cel(tr,a.mitre_id);cel(tr,a.verdict,a.verdict);
+ const t=cel(tr,'');const p=document.createElement('div');p.textContent=(a.param?a.param+'=':'')+(a.value_preview||'').slice(0,80);
+ const e=document.createElement('div');e.className='mut';e.textContent=a.explanation?(a.explanation_provider?'['+a.explanation_provider+'] ':'')+a.explanation:'gerando explicação…';t.append(p,e);
+ linhas[a.alert_id]=e;topo?$('feed').prepend(tr):$('feed').append(tr)}
+function stats(s){$('c_req').textContent=s.requests;$('c_al').textContent=s.alerts;$('c_bl').textContent=s.blocks;$('c_om').textContent=s.only_model;
+ $('modo').textContent='IP: '+s.ip_mode+(s.classifier?'':' · SEM MODELO (só regras)');
+ const ks=Object.keys(s.by_type);tipo.data.labels=ks;tipo.data.datasets[0].data=Object.values(s.by_type);tipo.data.datasets[0].backgroundColor=ks.map(cor);tipo.update();
+ const mx=Math.max(1,...Object.values(s.by_type));const bs=$('barras');bs.replaceChildren();
+ ks.forEach(k=>{const r=document.createElement('div');r.className='bar';const n=document.createElement('span');n.style.width='80px';n.textContent=k;const i=document.createElement('i');i.style.background=cor(k);i.style.width=(s.by_type[k]/mx*100)+'px';const c=document.createElement('span');c.textContent=s.by_type[k];r.append(n,i,c);bs.appendChild(r)});
+ const ips=$('ips');ips.replaceChildren();s.top_ips.forEach(([ip,n])=>{const tr=document.createElement('tr');cel(tr,ip);cel(tr,n);ips.appendChild(tr)});
+ const b=$('bloq');b.replaceChildren();Object.entries(s.blocked_ips).forEach(([ip,seg])=>{const tr=document.createElement('tr');cel(tr,ip);cel(tr,seg+'s');
+  const td=document.createElement('td');const bt=document.createElement('button');bt.textContent='desbloquear';bt.onclick=()=>fetch('/api/unblock',{method:'POST',headers:hdr(),body:JSON.stringify({ip})});td.appendChild(bt);tr.appendChild(td);b.appendChild(tr)})}
+// Provedor de IA: a chave só vai do campo para o POST; o GET devolve apenas "configurada" e os 4 últimos.
+let presets=[];
+const msg=(t,ok)=>{$('p_msg').textContent=t;$('p_msg').style.color=ok===undefined?'':ok?'#4ade80':'#f87171'};
+function mostrarProvedor(p){
+ presets=p.presets;const sel=$('p_preset');
+ if(!sel.options.length){[['Open source / local',true],['Pagos (API)',false]].forEach(([nome,os])=>{const g=document.createElement('optgroup');g.label=nome;
+  presets.filter(x=>x.open_source===os).forEach(x=>{const o=document.createElement('option');o.value=x.id;o.textContent=x.nome+(os?' · open source':' · pago');g.appendChild(o)});sel.appendChild(g)})}
+ sel.value=p.preset;$('p_url').value=p.base_url;$('p_model').value=p.model;$('p_key').value='';
+ $('p_key').placeholder=p.configurada?'configurada'+(p.ultimos4?' …'+p.ultimos4:''):'api_key';
+ msg(p.ativo?'ativo: '+p.rotulo:'sem chave ou desligado → texto padrão',p.ativo)}
+const carregarProvedor=()=>fetch('/api/provider',{headers:hdr()}).then(r=>r.ok?r.json():Promise.reject()).then(mostrarProvedor).catch(()=>{});
+$('p_preset').onchange=()=>{const x=presets.find(y=>y.id===$('p_preset').value);if(x){$('p_url').value=x.base_url;$('p_model').value=x.model;$('p_key').value=''}};
+$('p_salvar').onclick=()=>fetch('/api/provider',{method:'POST',headers:hdr(),body:JSON.stringify({preset:$('p_preset').value,base_url:$('p_url').value,model:$('p_model').value,api_key:$('p_key').value})})
+ .then(r=>r.json().then(j=>r.ok?mostrarProvedor(j):msg(j.error||'erro',false))).catch(()=>msg('falha ao salvar',false));
+$('p_testar').onclick=()=>{msg('testando…');fetch('/api/provider/test',{method:'POST',headers:hdr(),body:'{}'}).then(r=>r.json()).then(j=>msg((j.ok?'ok: ':'erro: ')+j.mensagem,j.ok)).catch(()=>msg('falha ao testar',false))};
+// Chat de logs: a resposta entra por textContent (escape), nunca como HTML.
+function chatAdd(q,r,prov){const d=document.createElement('div');d.style.cssText='margin:6px 0;padding:6px;border-bottom:1px solid #334155';
+ const a=document.createElement('div');a.className='mut';a.textContent='Você: '+q;const b=document.createElement('div');b.textContent=r;
+ const c=document.createElement('div');c.className='mut';c.textContent=prov?'['+prov+']':'';d.append(a,b,c);$('chat-out').prepend(d)}
+function perguntar(){const q=$('chat-q').value.trim();if(!q)return;$('chat-ask').disabled=true;
+ fetch('/api/chat',{method:'POST',headers:hdr(),body:JSON.stringify({pergunta:q})}).then(r=>r.json().then(j=>chatAdd(q,r.ok?j.resposta:(j.error||'erro'),j.provider)))
+  .catch(()=>chatAdd(q,'falha ao consultar o chat','')).finally(()=>{$('chat-ask').disabled=false;$('chat-q').value=''})}
+$('chat-ask').onclick=perguntar;$('chat-q').onkeydown=e=>{if(e.key==='Enter')perguntar()};
+let es;
+function conectar(){
+ carregarProvedor();
+ if(es)es.close();if(!chave)return;
+ fetch('/api/alerts?limit=50',{headers:hdr()}).then(r=>r.ok?r.json():Promise.reject()).then(l=>{$('feed').replaceChildren();Object.keys(linhas).forEach(k=>delete linhas[k]);l.reverse().forEach(a=>addAlerta(a))}).catch(()=>{});
+ es=new EventSource('/events?key='+encodeURIComponent(chave));
+ es.onopen=()=>$('conn').textContent='ao vivo';es.onerror=()=>$('conn').textContent='desconectado';
+ es.addEventListener('request',e=>{const d=JSON.parse(e.data);contar(d.verdict)});
+ es.addEventListener('alert',e=>addAlerta(JSON.parse(e.data)));
+ es.addEventListener('alert_update',e=>{const d=JSON.parse(e.data);if(linhas[d.alert_id])linhas[d.alert_id].textContent=(d.provider?'['+d.provider+'] ':'')+d.explanation});
+ es.addEventListener('stats',e=>stats(JSON.parse(e.data)));
+ es.addEventListener('reset',()=>{$('feed').replaceChildren()})}
+$('ok').onclick=()=>{chave=$('chave').value;localStorage.setItem('sentinela_key',chave);conectar()};
+$('reset').onclick=()=>fetch('/api/reset',{method:'POST',headers:hdr(),body:'{}'});
+conectar();
+</script></body></html>
