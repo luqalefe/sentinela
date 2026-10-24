@@ -51,6 +51,8 @@ flowchart LR
 
 **Stack:** Python stdlib + scikit-learn · HTML/JS + Chart.js (SSE) · middleware Laravel 10/11 · LLM OpenAI-compatível (DeepSeek, Ollama, vLLM, OpenAI, Groq…) · Evolution API.
 
+> 🧠 **Onde a IA entra (e onde não entra):** a *detecção* é ML + heurística + regra estática (determinística, &lt;30ms). A *LLM* só **explica** o alerta e responde o **chat de logs** — ela não decide bloqueio. Detalhes em [`docs/ia.md`](docs/ia.md).
+
 ---
 
 ## Começar
