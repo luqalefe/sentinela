@@ -91,4 +91,14 @@ Para cada alerta `flag`/`block`, uma **thread separada** (nunca o caminho da req
 
 Não há, neste ambiente, uma skill do Claude que faça **detecção de ataques em tempo real** — e nem faria sentido no caminho da requisição (latência e não-determinismo). A única skill de segurança disponível é `security-review`, que revisa **código** em busca de vulnerabilidades (útil no desenvolvimento, não em runtime).
 
-A detecção do Sentinela é **código próprio**: modelo scikit-learn + Isolation Forest + regras + heurística de tamanho. A IA generativa (LLM) entra só para **explicar** e **conversar** sobre os alertas. Quem quiser uma abordagem "LLM-as-detector" pode plugar o explicador como classificador extra (a infra de provedor já existe), mas como camada assíncrona de segunda opinião — não como o bloqueio em si.
+A detecção do Sentinela é **código próprio**: modelo scikit-learn + Isolation Forest + regras + heurística de tamanho. A IA generativa (LLM) entra como camada **assíncrona**, nunca no bloqueio:
+
+- **Explicador** (`explainer.py`) — descreve o alerta e a correção.
+- **Chat de logs** (`chatlogs.py`) — perguntas sobre os alertas.
+- **LLM-as-detector / revisor** (`reviewer.py`) — segunda opinião por alerta: ataque real ou provável **falso positivo**, com confiança e motivo. Aparece como badge no feed e no contador `false_positives`. Não muda o veredito.
+
+## 5. Advisor de CVEs por stack — proativo
+
+`detector/advisor.py` → `GET /api/advisories`
+
+Fora da detecção de tráfego, o Sentinela também **antecipa**: lê os componentes das apps de `composer.lock` / `package-lock.json` e de um `stacks.json`, consulta o **OSV.dev** (base agregada de GitHub Advisory, NVD, PyPA…) em lote e lista as vulnerabilidades conhecidas com severidade e **versão de correção**. Roda num intervalo configurável, fora do caminho da requisição, e avisa no WhatsApp quando surge CVE nova. É dado de fonte oficial, não heurística.

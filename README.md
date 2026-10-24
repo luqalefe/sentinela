@@ -32,7 +32,9 @@ Ataques ofuscados, CVEs novas de PHP e abuso de comportamento passam direto por 
 | 👁️ | **Vigia comportamento por IP** | Rajadas, varredura e força bruta por janela deslizante de 60s (Isolation Forest, com limiares de fallback) |
 | ⛔ | **Bloqueia na borda** | Middleware Laravel devolve `403`. *Fail-open*: detector fora não derruba o app |
 | 💬 | **Explica o alerta** | LLM descreve ataque, impacto e correção em Laravel. Provedor trocável na tela |
-| 📱 | **Avisa no WhatsApp** | Resumo agrupado dos bloqueios no celular do time, via Evolution API |
+| 🔁 | **Revisa (2ª opinião)** | LLM-as-detector: para cada alerta, diz se é ataque real ou provável **falso positivo** (nunca muda o veredito) |
+| 📡 | **Antecipa CVEs** | Advisor cruza a stack das apps (lock files + `stacks.json`) com o **OSV.dev** e sugere o que atualizar |
+| 📱 | **Avisa no WhatsApp** | Resumo agrupado dos bloqueios e das CVEs novas no celular do time, via Evolution API |
 | 🔎 | **Chat de logs** | Perguntas em linguagem natural: *"qual IP mais atacou?"* |
 
 ---
@@ -44,9 +46,11 @@ flowchart LR
     A[App Laravel<br/>middleware] -->|resumo da requisição<br/>sem senha/cookies| B[Detector Python<br/>/analyze &lt;30ms]
     B -->|veredito allow/flag/block| A
     B -->|SSE| C[Painel ao vivo<br/>feed + gráficos]
-    B -.->|fila, 2º plano| D[IA explicador<br/>OpenAI-compat]
+    B -.->|fila, 2º plano| D[IA: explicador +<br/>revisor de falso positivo]
     B -.->|resumo agrupado| E[WhatsApp<br/>Evolution API]
-    D -->|explicação| C
+    D -->|explicação + revisão| C
+    F[Advisor de CVEs] -->|OSV.dev| G[(stacks das apps<br/>lock files)]
+    F -->|vulnerabilidades| C
 ```
 
 **Stack:** Python stdlib + scikit-learn · HTML/JS + Chart.js (SSE) · middleware Laravel 10/11 · LLM OpenAI-compatível (DeepSeek, Ollama, vLLM, OpenAI, Groq…) · Evolution API.
@@ -109,9 +113,12 @@ POST /analyze        # veredito allow | flag | block + categoria + MITRE
 POST /api/feedback   # status HTTP pós-resposta (alimenta janela por IP)
 GET  /events         # Server-Sent Events: request | alert | alert_update | stats
 GET  /api/alerts     # últimos alertas (também carregados do disco ao subir)
+GET  /api/advisories # CVEs da stack (OSV.dev); POST /api/advisories/refresh força atualização
 POST /api/chat       # pergunta em linguagem natural sobre os logs
 POST /api/provider   # troca o provedor de IA em memória
 GET  /health         # liveness
+
+# Eventos SSE: request · alert · alert_update (explicação) · alert_review (2ª opinião) · stats
 ```
 
 Todos os `/analyze` e `/api/*` exigem o header `X-Sentinela-Key`.
@@ -125,6 +132,8 @@ sentinela/
 ├── detector/          # API, SSE, decisão, modelos, explicador, OOM, WhatsApp
 │   ├── server.py  train.py  normalize.py  rules.py  mitre.py
 │   ├── ipwindow.py  explainer.py  chatlogs.py  mask.py  wa_notify.py
+│   ├── reviewer.py              # LLM-as-detector (2ª opinião / falso positivo)
+│   ├── advisor.py               # CVEs da stack via OSV.dev
 │   └── static/index.html        # dashboard (sem build)
 ├── laravel/           # middleware SentinelaGuard + config + view de bloqueio
 ├── demo/              # menu, gerador de tráfego e roteiro do pitch
@@ -145,7 +154,7 @@ docs/requisitos.md     # especificação completa
 
 ## Status honesto
 
-**Pronto:** detector, API, dashboard, chat de logs, troca de provedor, middleware Laravel, explicador, alertas no WhatsApp, CVEs 2024 + OOM 2026, 47 testes.
+**Pronto:** detector, API, dashboard, chat de logs, troca de provedor, middleware Laravel, explicador, revisor de falso positivo (LLM-as-detector), advisor de CVEs por stack (OSV.dev), alertas no WhatsApp, CVEs 2024 + OOM 2026, 49 testes.
 
 **A fazer:** treinar o modelo com `data/train.csv` real (o F1 ≥ 0,90 entra no slide) e o sidecar do log do FPM para o vetor via socket.
 
