@@ -248,3 +248,13 @@ def test_reviewer_interpreta_json():
     assert r["confianca"] == 0.8
     r2 = reviewer.interpretar("sem json")
     assert r2["veredito"] == "incerto" and r2["confianca"] == 0.0
+
+
+def test_advisor_le_composer_lock(tmp_path):
+    import advisor, json as _j
+    lock = tmp_path / "composer.lock"
+    lock.write_text(_j.dumps({"packages": [{"name": "laravel/framework", "version": "v9.0.0"}]}))
+    sf = tmp_path / "stacks.json"
+    sf.write_text(_j.dumps({"apps": [{"name": "app", "lock": "composer.lock"}]}))
+    comps = advisor.carregar_stacks(str(sf))
+    assert comps == [{"ecosystem": "Packagist", "name": "laravel/framework", "version": "9.0.0", "origem": "app"}]

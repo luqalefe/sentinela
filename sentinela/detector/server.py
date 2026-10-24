@@ -82,7 +82,24 @@ class Estado:
             self.wa = WhatsAppNotifier(env)
         except Exception:
             self.wa = None
+        try:
+            from advisor import Advisor
+            self.advisor = Advisor(env, on_new=self._cve_nova)
+        except Exception:
+            self.advisor = None
         self.zerar()
+
+    def _cve_nova(self, advisories):
+        """Callback do advisor: avisa no WhatsApp sobre vulnerabilidades novas da stack."""
+        if not (self.wa and advisories):
+            return
+        top = advisories[:5]
+        linhas = ["🛡️ *Sentinela* — vulnerabilidades na sua stack",
+                  f"{len(advisories)} achado(s) do OSV.dev", ""]
+        for a in top:
+            fix = f" → corrigir em {a['correcao']}" if a.get("correcao") else ""
+            linhas.append(f"• {a['pacote']} {a['versao']}: {a['id']} ({a['severidade']}){fix}")
+        self.wa.enviar_texto("\n".join(linhas))
         self._carregar_historico()
 
     def _carregar_historico(self):
@@ -373,6 +390,10 @@ def criar_handler(estado):
                 lim = int(q.get("limit", ["50"])[0])
                 with estado.lock:
                     return self._json(200, list(estado.alertas)[-lim:][::-1])
+            if u.path == "/api/advisories":
+                if not estado.advisor:
+                    return self._json(200, {"habilitado": False, "itens": [], "atualizado_em": None})
+                return self._json(200, {"habilitado": estado.advisor.enabled, **estado.advisor.atual()})
             self._json(404, {"error": "não encontrado"})
 
         def do_POST(self):
@@ -416,6 +437,11 @@ def criar_handler(estado):
                 estado.zerar()
                 estado.emitir("reset", {})
                 return self._json(200, {"ok": True})
+            if u.path == "/api/advisories/refresh":
+                if not estado.advisor:
+                    return self._json(200, {"itens": []})
+                itens = estado.advisor.atualizar()
+                return self._json(200, {"itens": itens, "atualizado_em": estado.advisor.atualizado_em})
             self._json(404, {"error": "não encontrado"})
 
         def _sse(self):

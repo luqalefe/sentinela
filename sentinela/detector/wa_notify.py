@@ -82,6 +82,15 @@ class WhatsAppNotifier:
             linhas.append(f"payload: `{preview}`")
         return "\n".join(linhas)
 
+    def enviar_texto(self, texto):
+        """Envio avulso (ex.: advisor de CVEs). Respeita enabled/chave/destino."""
+        if not (self.enabled and self.to and self.key):
+            return
+        try:
+            self._enviar(texto)
+        except Exception as e:  # noqa: BLE001
+            print(f"[wa_notify] falha ao enviar: {type(e).__name__}", flush=True)
+
     def _enviar(self, texto):
         url = f"{self.base}/message/sendText/{self.instance}"
         corpo = json.dumps({"number": self.to, "text": texto}).encode()

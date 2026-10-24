@@ -1,0 +1,9 @@
+{
+  "apps": [
+    { "name": "ecommerce-homolog", "lock": "../../chat-bot/composer.lock" },
+    { "name": "ecommerce-homolog (frontend)", "lock": "../../chat-bot/package-lock.json" }
+  ],
+  "componentes": [
+    { "ecosystem": "Packagist", "name": "laravel/framework", "version": "9.0.0", "origem": "exemplo" }
+  ]
+}

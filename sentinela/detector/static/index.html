@@ -43,6 +43,12 @@ th{color:var(--mut);font-weight:500;font-size:12px}
 <div class="box"><h3>Por tipo</h3><canvas id="ch_tipo" height="200"></canvas><div id="barras"></div></div>
 <div class="box"><h3>Top IPs</h3><table id="ips"></table><h3 style="margin-top:14px">Bloqueados</h3><table id="bloq"></table></div></div>
 <div class="box feed"><table><thead><tr><th>Hora</th><th>IP</th><th>Rota</th><th>Tipo</th><th>Score</th><th>MITRE</th><th>Veredito</th><th>Payload / Explicação</th></tr></thead><tbody id="feed"></tbody></table></div>
+<div class="box" id="advisories" style="margin:12px 16px 0">
+<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+<div><b>Vulnerabilidades da sua stack</b> <span class="mut">CVEs cruzadas com as apps monitoradas · OSV.dev</span></div>
+<button id="adv-refresh">Atualizar</button></div>
+<div id="adv-meta" class="mut" style="font-size:12px;margin:4px 0"></div>
+<table id="adv-tab"></table></div>
 <div class="box" id="chat-logs" style="margin:12px 16px 0">
 <b>Chat de logs</b> <span class="mut">pergunte sobre os alertas (ex.: "qual IP mais atacou?")</span>
 <div style="display:flex;gap:8px;margin:6px 0"><input id="chat-q" placeholder="Pergunte sobre os logs…" style="flex:1"><button id="chat-ask">Perguntar</button></div>
@@ -101,6 +107,19 @@ function mostrarProvedor(p){
  $('p_key').placeholder=p.configurada?'configurada'+(p.ultimos4?' …'+p.ultimos4:''):'api_key';
  msg(p.ativo?'ativo: '+p.rotulo:'sem chave ou desligado → texto padrão',p.ativo)}
 const carregarProvedor=()=>fetch('/api/provider',{headers:hdr()}).then(r=>r.ok?r.json():Promise.reject()).then(mostrarProvedor).catch(()=>{});
+function mostrarAdvisories(d){
+ const meta=$('adv-meta'),tab=$('adv-tab');
+ if(!d.habilitado){meta.textContent='advisor desligado (ADVISOR_ENABLED=true + ADVISOR_STACKS_FILE para ligar)';tab.replaceChildren();return}
+ meta.textContent=(d.itens.length?d.itens.length+' vulnerabilidade(s)':'nenhuma vulnerabilidade conhecida')+(d.atualizado_em?' · atualizado '+new Date(d.atualizado_em).toLocaleString():'');
+ tab.replaceChildren();
+ if(!d.itens.length)return;
+ const h=document.createElement('tr');['App','Pacote','Versão','CVE','Severidade','Corrigir em'].forEach(t=>{const th=document.createElement('th');th.textContent=t;th.style.textAlign='left';h.appendChild(th)});tab.appendChild(h);
+ d.itens.slice(0,40).forEach(a=>{const tr=document.createElement('tr');
+  const link=a.id&&a.id.startsWith('CVE')?a.id:a.osv_id;
+  [a.origem,a.pacote,a.versao,link,String(a.severidade).replace(/^CVSS:[^/]*\//,'').slice(0,28),a.correcao||'—'].forEach((v,i)=>{const td=document.createElement('td');td.style.padding='4px 10px 4px 0';td.textContent=v;if(i===3){td.style.color='var(--acc,#4d9bff)'}if(i===5&&a.correcao){td.style.color='#3ecf8e'}tr.appendChild(td)});
+  tr.title=a.resumo||'';tab.appendChild(tr)})}
+const carregarAdvisories=()=>fetch('/api/advisories',{headers:hdr()}).then(r=>r.ok?r.json():Promise.reject()).then(mostrarAdvisories).catch(()=>{});
+$('adv-refresh').onclick=()=>{$('adv-meta').textContent='consultando OSV.dev…';fetch('/api/advisories/refresh',{method:'POST',headers:hdr(),body:'{}'}).then(r=>r.json()).then(()=>carregarAdvisories()).catch(()=>{$('adv-meta').textContent='falha ao consultar'})};
 $('p_preset').onchange=()=>{const x=presets.find(y=>y.id===$('p_preset').value);if(x){$('p_url').value=x.base_url;$('p_model').value=x.model;$('p_key').value=''}};
 $('p_salvar').onclick=()=>fetch('/api/provider',{method:'POST',headers:hdr(),body:JSON.stringify({preset:$('p_preset').value,base_url:$('p_url').value,model:$('p_model').value,api_key:$('p_key').value})})
  .then(r=>r.json().then(j=>r.ok?mostrarProvedor(j):msg(j.error||'erro',false))).catch(()=>msg('falha ao salvar',false));
@@ -115,7 +134,7 @@ function perguntar(){const q=$('chat-q').value.trim();if(!q)return;$('chat-ask')
 $('chat-ask').onclick=perguntar;$('chat-q').onkeydown=e=>{if(e.key==='Enter')perguntar()};
 let es;
 function conectar(){
- carregarProvedor();
+ carregarProvedor();carregarAdvisories();
  if(es)es.close();if(!chave)return;
  fetch('/api/alerts?limit=50',{headers:hdr()}).then(r=>r.ok?r.json():Promise.reject()).then(l=>{$('feed').replaceChildren();Object.keys(linhas).forEach(k=>delete linhas[k]);Object.keys(revs).forEach(k=>delete revs[k]);l.reverse().forEach(a=>addAlerta(a))}).catch(()=>{});
  es=new EventSource('/events?key='+encodeURIComponent(chave));
