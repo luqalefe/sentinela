@@ -7,6 +7,7 @@ MITRE = {
     "xss": _T1190,
     "traversal": _T1190,
     "cmdi": _T1190,
+    "oom": {"id": "T1499", "name": "Endpoint Denial of Service"},
     "brute_force": {"id": "T1110", "name": "Brute Force"},
     "scan": {"id": "T1595", "name": "Active Scanning"},
     "flood": {"id": "T1498", "name": "Network Denial of Service"},

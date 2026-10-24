@@ -65,6 +65,10 @@ class Estado:
         self.chave = env.get("SENTINELA_API_KEY", "")
         self.flag = float(env.get("SENTINELA_FLAG", 0.5))
         self.block = float(env.get("SENTINELA_BLOCK", 0.85))
+        # Tamanho de payload HTTP a partir do qual a requisição é tratada como
+        # tentativa de exaustão de memória (OOM-DoS). Defesa na borda contra o
+        # php2shell / bailout de OOM do FPM (CVE-2026-109618/109619).
+        self.oom_bytes = int(env.get("SENTINELA_OOM_BYTES", 1048576))  # 1 MB
         self.log_path = env.get("SENTINELA_LOG", os.path.join(RAIZ, "logs", "alerts.jsonl"))
         self.updates_path = os.path.splitext(self.log_path)[0] + "_updates.jsonl"
         self.clf = _joblib("classifier.joblib") if classificador == "auto" else classificador
@@ -197,9 +201,16 @@ class Estado:
         t0 = time.perf_counter()
         ip = req.get("ip", "")
         params = req.get("params") or {}
-        tam = sum(len(str(v)) for v in params.values())
+        # Tamanho do corpo: o middleware reporta body_bytes (Content-Length real) sem
+        # precisar enviar o payload inteiro ao detector — é assim que o OOM é visto na borda.
+        tam = max(sum(len(str(v)) for v in params.values()), int(req.get("body_bytes") or 0))
         self.janela.registrar_requisicao(ip, req.get("path", ""), tam)
         r_pay, cat_pay, param, valor, regra = self.risco_payload(params)
+        # Payload gigante = provável tentativa de OOM-DoS (memory bomb) pela borda HTTP.
+        # Uma regra WAF de assinatura não pega (rule_hit=False); é detecção por tamanho.
+        if tam >= self.oom_bytes and self.block > r_pay:
+            maior = max(params, key=lambda k: len(str(params[k]))) if params else None
+            r_pay, cat_pay, param, valor, regra = self.block, "oom", maior, f"<payload {tam} bytes>", False
         r_ip, cat_ip = self.risco_ip(ip)
         risco = max(r_pay, r_ip)
         origem, cat = ("payload", cat_pay) if r_pay >= r_ip else ("ip_behavior", cat_ip)

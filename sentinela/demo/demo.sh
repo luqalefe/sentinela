@@ -32,6 +32,7 @@ menu() {
   echo "  ${c_ok}1${c_off})  Resetar demo        ${c_dim}(painel verde, zera tudo)${c_off}"
   echo "  ${c_ok}2${c_off})  Payloads de ataque  ${c_dim}(SQLi, XSS, traversal, cmdi)${c_off}"
   echo "  ${c_ok}8${c_off})  PHP 2024 ${c_warn}★${c_off}         ${c_dim}(CVE-2024-4577, CVE-2024-52301, filter chains)${c_off}"
+  echo "  ${c_ok}9${c_off})  OOM-DoS 2026 ${c_warn}★${c_off}     ${c_dim}(memory bomb HTTP, CVE-2026-109618)${c_off}"
   echo "  ${c_ok}3${c_off})  Scan                ${c_dim}(varredura de rotas → bloqueio)${c_off}"
   echo "  ${c_ok}4${c_off})  Brute force         ${c_dim}(falhas de login)${c_off}"
   echo "  ${c_ok}5${c_off})  Flood               ${c_dim}(rajada → bloqueio)${c_off}"
@@ -50,6 +51,7 @@ while true; do
     1) echo; "$PY" demo/traffic.py --reset --only payload >/dev/null 2>&1; echo "demo zerada."; echo "${c_dim}— Enter —${c_off}"; read -r _ ;;
     2) rodar --only payload ;;
     8) rodar --only php ;;
+    9) rodar --only oom ;;
     3) rodar --only scan ;;
     4) rodar --only brute ;;
     5) rodar --only flood ;;

@@ -97,6 +97,9 @@ class SentinelaGuard
             'method' => $request->method(),
             'path' => '/'.ltrim($request->path(), '/'),
             'params' => (object) $params,
+            // Tamanho do corpo (Content-Length), para o detector pegar tentativa de
+            // exaustão de memória (OOM-DoS) sem receber o payload inteiro.
+            'body_bytes' => (int) ($request->header('Content-Length') ?? strlen($request->getContent())),
             'user_agent' => (string) $request->userAgent(),
             'app' => config('sentinela.app'),
             'ts' => now()->utc()->format('Y-m-d\TH:i:s\Z'),

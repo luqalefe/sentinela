@@ -75,10 +75,12 @@ def _req(url, key, path, obj=None):
         return resp.status, (json.loads(body) if body.strip() else {})
 
 
-def analyze(url, key, ip, path, params, method="GET"):
+def analyze(url, key, ip, path, params, method="GET", body_bytes=None):
     obj = {"request_id": str(uuid.uuid4()), "ip": ip, "method": method,
            "path": path, "params": params, "user_agent": "demo-traffic/1.0",
            "app": "demo-homolog", "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    if body_bytes is not None:
+        obj["body_bytes"] = body_bytes
     return _req(url, key, "/analyze", obj)
 
 
@@ -108,6 +110,23 @@ def run_php(url, key):
         marca = "OK" if r.get("verdict") == "block" else "!! PASSOU"
         print(f"[{esperado:9}] {marca:9} verdict={str(r.get('verdict')):5} cat={str(r.get('category')):10} "
               f"rule_hit={r.get('rule_hit')}  <- {v[:52]!r}")
+
+
+def run_oom(url, key):
+    print("\n== OOM-DoS / memory bomb pela borda HTTP (espírito do php2shell, CVE-2026-109618) ==")
+    ip = "203.0.113.88"
+    # O middleware reporta o Content-Length (body_bytes); o detector decide pela borda
+    # sem receber o blob inteiro. Enviamos uma amostra + o tamanho real declarado.
+    casos = [
+        ("A" * 64, 2 * 1024 * 1024, "block", "corpo de 2 MB (str_repeat → estoura memory_limit 128M)"),
+        ("eyJ...", 6 * 1024 * 1024, "block", "upload base64 de 6 MB (memory bomb)"),
+        ("payload normal", 5 * 1024, "allow", "5 KB (requisição legítima, deve passar)"),
+    ]
+    for amostra, nbytes, esperado, desc in casos:
+        _, r = analyze(url, key, ip, "/index.php", {"data": amostra}, method="POST", body_bytes=nbytes)
+        marca = "OK" if r.get("verdict") == esperado else "!! INESPERADO"
+        print(f"[oom      ] {marca:13} verdict={str(r.get('verdict')):5} cat={str(r.get('category')):6} "
+              f"MITRE={ (r.get('mitre') or {}).get('id')}  <- {desc}")
 
 
 def run_scan(url, key):
@@ -143,7 +162,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="http://127.0.0.1:8765")
     ap.add_argument("--reset", action="store_true")
-    ap.add_argument("--only", choices=["payload", "php", "scan", "brute", "flood"])
+    ap.add_argument("--only", choices=["payload", "php", "oom", "scan", "brute", "flood"])
     a = ap.parse_args()
     key = os.environ.get("SENTINELA_API_KEY")
     if not key:
@@ -156,6 +175,8 @@ def main():
         run_payloads(a.url, key)
     if only in (None, "php"):
         run_php(a.url, key)
+    if only in (None, "oom"):
+        run_oom(a.url, key)
     if only in (None, "scan"):
         run_scan(a.url, key)
     if only in (None, "brute"):

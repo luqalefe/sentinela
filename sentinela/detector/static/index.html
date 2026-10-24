@@ -53,7 +53,7 @@ let chave=localStorage.getItem('sentinela_key')||'';$('chave').value=chave;
 // Todo texto vindo do servidor entra por textContent: payload nunca vira HTML.
 const cel=(tr,txt,cls)=>{const td=document.createElement('td');td.textContent=txt??'';if(cls)td.className=cls;tr.appendChild(td);return td};
 const hdr=()=>({'X-Sentinela-Key':chave,'Content-Type':'application/json'});
-const COR={sqli:'#f87171',xss:'#fb923c',traversal:'#fbbf24',cmdi:'#e879f9',scan:'#38bdf8',brute_force:'#a78bfa',flood:'#2dd4bf',normal:'#34d399'};
+const COR={sqli:'#f87171',xss:'#fb923c',traversal:'#fbbf24',cmdi:'#e879f9',scan:'#38bdf8',brute_force:'#a78bfa',flood:'#2dd4bf',oom:'#f43f5e',normal:'#34d399'};
 const cor=c=>COR[c]||'#94a3b8';
 Chart.defaults.color='#8b9ab8';Chart.defaults.borderColor='#26324d';
 const VC={allow:'#34d399',flag:'#fbbf24',block:'#f87171'};

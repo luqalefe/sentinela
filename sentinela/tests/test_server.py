@@ -223,3 +223,19 @@ def test_chat_com_provedor_mascara_ip_e_traduz_de_volta(tmp_path):
 
 def test_chat_pergunta_vazia(tmp_path):
     assert _chat(tmp_path, "  ")[0] == 400
+
+
+def test_oom_payload_gigante_bloqueia(tmp_path):
+    e = estado(tmp_path)
+    e.oom_bytes = 1_000_000  # garante o limiar no teste
+    r = e.analisar(req("A" * 1_200_000))
+    assert r["verdict"] == "block"
+    assert r["category"] == "oom"
+    assert r["mitre"]["id"] == "T1499"
+    assert r["rule_hit"] is False
+
+
+def test_oom_payload_pequeno_nao_dispara(tmp_path):
+    e = estado(tmp_path)
+    e.oom_bytes = 1_000_000
+    assert e.analisar(req("tenis azul"))["category"] != "oom"
